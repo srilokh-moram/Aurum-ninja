@@ -1,58 +1,41 @@
-import MetaTrader5 as mt5
-from config import SYMBOL, LOT_SIZE, GRID_GAP
-from logger import log, err
 import time
+from datetime import datetime
+
+from config import GRID_GAP
+from nt8_connector import place_market_buy, place_limit_sell
+from grid_state import load_state, save_state
+from logger import log, err
 
 
-def place_buy(price):
-    # Step 1: Send BUY without TP
-    request = {
-        "action": mt5.TRADE_ACTION_DEAL,
-        "symbol": SYMBOL,
-        "volume": LOT_SIZE,
-        "type": mt5.ORDER_TYPE_BUY,
-        "price": price,
-        "deviation": 50,
-        "magic": 10001,
-        "comment": "grid buy",
-        "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_FOK,
-    }
+def _order_id(prefix: str) -> str:
+    return f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
 
-    result = mt5.order_send(request)
 
-    if not result or result.retcode != mt5.TRADE_RETCODE_DONE:
-        err(f"BUY FAILED: {result}")
-        return result
+def place_buy(ask: float) -> bool:
+    buy_id = _order_id("BUY")
+    tp_id  = _order_id("TP")
+    tp_price = round(ask + GRID_GAP, 2)
 
-    # Step 2: Get actual filled position
-    time.sleep(0.2)  # small delay to ensure MT5 updates
+    if not place_market_buy(buy_id):
+        err("MARKET BUY FAILED")
+        return False
 
-    positions = mt5.positions_get(ticket=result.order)
+    # Brief pause so NT8 processes the market order before we add the TP
+    time.sleep(0.5)
 
-    if not positions:
-        err("ERROR: Position not found after buy")
-        return result
+    if not place_limit_sell(tp_id, tp_price):
+        err(f"TP ORDER FAILED for {buy_id}")
+        return False
 
-    pos = positions[0]
-    filled_price = pos.price_open
+    levels = load_state()
+    levels.append({
+        "entry_price":  ask,
+        "tp_price":     tp_price,
+        "buy_order_id": buy_id,
+        "tp_order_id":  tp_id,
+        "timestamp":    datetime.now().isoformat(),
+    })
+    save_state(levels)
 
-    # Step 3: Calculate exact TP
-    tp_price = filled_price + GRID_GAP
-
-    # Step 4: Modify position to add TP
-    modify_request = {
-        "action": mt5.TRADE_ACTION_SLTP,
-        "position": pos.ticket,
-        "tp": tp_price,
-        "symbol": SYMBOL,
-    }
-
-    modify_result = mt5.order_send(modify_request)
-
-    if modify_result and modify_result.retcode == mt5.TRADE_RETCODE_DONE:
-        log(f"BUY FILLED @ {filled_price} | TP SET @ {tp_price}")
-    else:
-        err(f"TP SET FAILED: {modify_result}")
-
-    return result
+    log(f"BUY PLACED @ ~{ask} | TP @ {tp_price} | levels: {len(levels)}")
+    return True

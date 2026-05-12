@@ -3,11 +3,23 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-MT5_LOGIN = int(os.getenv("MT5_LOGIN"))
-MT5_PASSWORD = os.getenv("MT5_PASSWORD")
-MT5_SERVER = os.getenv("MT5_SERVER")
+# NinjaTrader 8 account / symbol
+NT8_ACCOUNT = os.getenv("NT8_ACCOUNT", "Sim101")
+NT8_SYMBOL  = os.getenv("NT8_SYMBOL", "MGC 06-25")   # update each roll
 
-SYMBOL = os.getenv("SYMBOL")
-LOT_SIZE = float(os.getenv("LOT_SIZE", 0.01))
-GRID_GAP = float(os.getenv("GRID_GAP", 5))
-SLEEP_SECONDS = float(os.getenv("SLEEP_SECONDS", 1))
+# ATI incoming folder — NT8 watches here for order commands
+NT8_INCOMING_DIR = os.path.expandvars(
+    os.getenv("NT8_INCOMING_DIR",
+              r"%USERPROFILE%\Documents\NinjaTrader 8\incoming")
+)
+
+# Price/position feed written by AurumFeed.cs indicator
+NT8_FEED_FILE = os.path.expandvars(
+    os.getenv("NT8_FEED_FILE",
+              r"%USERPROFILE%\Documents\NinjaTrader 8\aurum_feed.json")
+)
+
+# Grid parameters
+LOT_SIZE     = int(float(os.getenv("LOT_SIZE", 1)))      # contracts (MGC)
+GRID_GAP     = float(os.getenv("GRID_GAP", 5.0))         # dollars per oz
+SLEEP_SECONDS = float(os.getenv("SLEEP_SECONDS", 1.0))

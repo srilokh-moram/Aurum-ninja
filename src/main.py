@@ -1,117 +1,63 @@
 import time
-import MetaTrader5 as mt5
 
-from mt5_connector import connect, ensure_connection, get_price, is_market_open
+from nt8_connector import get_price, is_market_open, get_net_position
 from trader import place_buy
+from grid_state import load_state, sync_closed_levels
 from config import SLEEP_SECONDS, GRID_GAP
 from logger import log, err
 
 
-def get_mt5_positions():
-    positions = mt5.positions_get()
-
-    if positions is None:
-        return []
-
-    return [
-        {
-            "ticket": p.ticket,
-            "price": p.price_open,
-            "volume": p.volume,
-            "tp": p.tp
-        }
-        for p in positions
-    ]
-
-
-# 🔥 Add TP to old positions (one-time safety)
-def add_tp_to_existing_positions():
-    positions = mt5.positions_get()
-
-    if positions is None:
-        return
-
-    for p in positions:
-        if p.tp == 0.0:
-            tp_price = p.price_open + GRID_GAP
-
-            request = {
-                "action": mt5.TRADE_ACTION_SLTP,
-                "position": p.ticket,
-                "tp": tp_price,
-                "symbol": p.symbol,
-            }
-
-            result = mt5.order_send(request)
-            log(f"TP ADDED -> ticket: {p.ticket} | TP: {tp_price}")
-
-
 def run():
-    connect()
-
-    # Fix existing trades
-    add_tp_to_existing_positions()
+    log("Aurum Grid Bot starting (NinjaTrader / MGC)")
 
     while True:
-        ensure_connection()
-
         if not is_market_open():
             log("MARKET CLOSED -> waiting")
-            time.sleep(1)
+            time.sleep(5)
             continue
 
         tick = get_price()
         if tick is None:
-            err("NO TICK DATA")
-            time.sleep(0.1)
+            err("NO PRICE DATA — is AurumFeed indicator running on an MGC chart?")
+            time.sleep(2)
             continue
 
-        ask = tick["ask"]
-        bid = tick["bid"]
-        spread = round(ask - bid, 3)
+        ask    = tick["ask"]
+        bid    = tick["bid"]
+        spread = round(ask - bid, 2)
 
-        positions = get_mt5_positions()
+        levels     = load_state()
+        net_pos    = get_net_position()
+        levels     = sync_closed_levels(levels, net_pos)
 
-        # ================= HEADER =================
         log("========================================")
         log(f"PRICE -> ASK: {ask} | BID: {bid} | SPREAD: {spread}")
-        log(f"POSITIONS COUNT: {len(positions)}")
+        log(f"GRID LEVELS: {len(levels)} | NET POSITION: {net_pos}")
 
-        if positions:
-            log(f"HOLDINGS: {[p['price'] for p in positions]}")
-        else:
-            log("HOLDINGS: []")
+        for lvl in levels:
+            log(f"LEVEL -> entry: {lvl['entry_price']} | tp: {lvl['tp_price']}")
 
-        # ================= POSITION DETAILS =================
-        for p in positions:
-            log(f"POS -> ticket: {p['ticket']} | buy: {p['price']} | tp: {p['tp']}")
-
-        # ================= FIRST BUY =================
-        if not positions:
+        # ---- FIRST BUY ----
+        if not levels:
             log("DECISION -> FIRST BUY")
-
             place_buy(ask)
-            time.sleep(0.2)
+            time.sleep(0.5)
             continue
 
-        # ================= GRID LOGIC =================
-        lowest_price = min(p["price"] for p in positions)
-        next_buy_level = lowest_price - GRID_GAP
+        # ---- GRID BUY ----
+        lowest_entry   = min(lvl["entry_price"] for lvl in levels)
+        next_buy_level = round(lowest_entry - GRID_GAP, 2)
 
-        log(f"LOWEST PRICE: {lowest_price}")
-        log(f"NEXT BUY LEVEL: {next_buy_level}")
+        log(f"LOWEST ENTRY: {lowest_entry} | NEXT BUY LEVEL: {next_buy_level}")
 
-        # ================= DECISION =================
         if ask <= next_buy_level:
             log("DECISION -> GRID BUY TRIGGERED")
-
             place_buy(ask)
-            time.sleep(0.2)
+            time.sleep(0.5)
             continue
 
-        # ================= HOLD =================
+        # ---- HOLD ----
         log("DECISION -> HOLD (price not low enough)")
-
         time.sleep(SLEEP_SECONDS)
 
 
