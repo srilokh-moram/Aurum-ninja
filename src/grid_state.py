@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 
 from logger import log
@@ -22,16 +23,25 @@ def save_state(levels: list) -> None:
         json.dump(levels, f, indent=2)
 
 
+_SETTLE_SECONDS = 5  # grace period after a buy before syncing
+
+
 def sync_closed_levels(levels: list, net_position: int) -> list:
     """
-    Remove grid levels that were closed by their TP orders hitting.
+    Remove grid levels whose TP orders have been filled.
 
-    When net_position < len(levels), some SELL LIMIT (TP) orders filled.
-    We assume the levels with the LOWEST tp_price fired first
-    (price rises → lowest TP hits first).
+    Skips sync entirely if any level was placed within the last
+    _SETTLE_SECONDS seconds — gives NT8 time to update the position
+    before we compare against net_position.
     """
     if not levels or net_position >= len(levels):
         return levels
+
+    now = datetime.now()
+    for lvl in levels:
+        age = (now - datetime.fromisoformat(lvl["timestamp"])).total_seconds()
+        if age < _SETTLE_SECONDS:
+            return levels  # positions still settling, skip sync
 
     closed_count = len(levels) - net_position
     sorted_levels = sorted(levels, key=lambda x: x["tp_price"])
