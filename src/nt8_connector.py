@@ -40,19 +40,10 @@ def _send(command: str) -> bool:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(5)
             s.connect((NT8_ATI_HOST, NT8_ATI_PORT))
-
-            # Read any welcome/handshake message NT8 sends on connect
-            try:
-                welcome = s.recv(4096).decode("ascii", errors="ignore").strip()
-                if welcome:
-                    log(f"ATI WELCOME: {welcome}")
-            except Exception:
-                pass
-
             s.sendall((command + "\r\n").encode("ascii"))
             log(f"ATI -> {command}")
 
-            # Read NT8's response to our command
+            # Read NT8's response (may include welcome + command response)
             try:
                 response = s.recv(4096).decode("ascii", errors="ignore").strip()
                 if response:
