@@ -11,6 +11,28 @@ def _order_id(prefix: str) -> str:
     return f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}"
 
 
+def recover_orphaned_positions(ask: float, net_pos: int) -> None:
+    """Restart scenario: open positions exist but grid_state is empty.
+    Place TP orders for each orphaned long so they have an exit."""
+    levels = load_state()
+    for _ in range(net_pos):
+        tp_id    = _order_id("TP")
+        tp_price = round(ask + GRID_GAP, 2)
+        if place_limit_sell(tp_id, tp_price):
+            levels.append({
+                "entry_price":  ask,
+                "tp_price":     tp_price,
+                "buy_order_id": "ORPHAN",
+                "tp_order_id":  tp_id,
+                "timestamp":    datetime.now().isoformat(),
+            })
+            log(f"ORPHAN TP PLACED @ {tp_price}")
+        else:
+            err("ORPHAN TP FAILED")
+    save_state(levels)
+    log(f"ORPHAN RECOVERY DONE | levels: {len(levels)}")
+
+
 def place_buy(ask: float) -> bool:
     buy_id = _order_id("BUY")
     tp_id  = _order_id("TP")

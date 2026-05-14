@@ -38,18 +38,28 @@ def get_net_position() -> int:
 def _send(command: str) -> bool:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(5)
+            s.settimeout(3)
             s.connect((NT8_ATI_HOST, NT8_ATI_PORT))
+
+            # NT8 sends "2" as a ready signal immediately on connect
+            buf = ""
+            try:
+                buf = s.recv(4096).decode("ascii", errors="ignore")
+            except Exception:
+                pass
+
             s.sendall((command + "\r\n").encode("ascii"))
             log(f"ATI -> {command}")
 
-            # Read NT8's response (may include welcome + command response)
-            try:
-                response = s.recv(4096).decode("ascii", errors="ignore").strip()
-                if response:
-                    log(f"ATI RESPONSE: {response}")
-            except Exception:
-                pass
+            # Read order response — skip second read if welcome already bundled it
+            if "Orders|" not in buf:
+                try:
+                    buf = s.recv(4096).decode("ascii", errors="ignore")
+                except Exception:
+                    pass
+
+            if buf.strip():
+                log(f"ATI RESPONSE: {buf.strip()}")
 
             return True
     except ConnectionRefusedError:

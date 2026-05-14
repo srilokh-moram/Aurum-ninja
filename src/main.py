@@ -1,7 +1,7 @@
 import time
 
 from nt8_connector import get_price, is_market_open, get_net_position
-from trader import place_buy
+from trader import place_buy, recover_orphaned_positions
 from grid_state import load_state, sync_closed_levels
 from config import SLEEP_SECONDS, GRID_GAP
 from logger import log, err
@@ -37,8 +37,13 @@ def run():
         for lvl in levels:
             log(f"LEVEL -> entry: {lvl['entry_price']} | tp: {lvl['tp_price']}")
 
-        # ---- FIRST BUY ----
+        # ---- FIRST BUY / ORPHAN RECOVERY ----
         if not levels:
+            if net_pos > 0:
+                log(f"DECISION -> ORPHAN RECOVERY ({net_pos} open position(s), no grid state)")
+                recover_orphaned_positions(ask, net_pos)
+                time.sleep(0.5)
+                continue
             log("DECISION -> FIRST BUY")
             place_buy(ask)
             time.sleep(0.5)
