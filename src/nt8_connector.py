@@ -1,16 +1,9 @@
 import json
-import os
-from datetime import datetime, timezone
+import socket
 from pathlib import Path
 
-from config import NT8_ACCOUNT, NT8_SYMBOL, NT8_INCOMING_DIR, NT8_FEED_FILE
+from config import NT8_ACCOUNT, NT8_SYMBOL, NT8_ATI_HOST, NT8_ATI_PORT, NT8_FEED_FILE
 from logger import log, err
-
-
-def _incoming_dir() -> Path:
-    p = Path(NT8_INCOMING_DIR)
-    p.mkdir(parents=True, exist_ok=True)
-    return p
 
 
 def read_feed() -> dict | None:
@@ -43,14 +36,18 @@ def get_net_position() -> int:
 
 
 def _send(command: str) -> bool:
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    path = _incoming_dir() / f"aurum_{ts}.txt"
     try:
-        path.write_text(command + "\n", encoding="utf-8")
-        log(f"ATI -> {command}")
-        return True
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect((NT8_ATI_HOST, NT8_ATI_PORT))
+            s.sendall((command + "\r\n").encode("ascii"))
+            log(f"ATI -> {command}")
+            return True
+    except ConnectionRefusedError:
+        err(f"ATI CONNECTION REFUSED — is NT8 running with AT Interface enabled on port {NT8_ATI_PORT}?")
+        return False
     except Exception as e:
-        err(f"ATI WRITE FAILED: {e}")
+        err(f"ATI FAILED: {e}")
         return False
 
 
