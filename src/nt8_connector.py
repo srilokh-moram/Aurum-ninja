@@ -76,7 +76,7 @@ def place_market_buy(order_id: str) -> bool:
 
 
 def place_limit_sell(order_id: str, price: float) -> bool:
-    cmd = f"PLACE;{NT8_ACCOUNT};{NT8_SYMBOL};SELL;1;LIMIT;{price:.2f};0;GTC;;{order_id};"
+    cmd = f"PLACE;{NT8_ACCOUNT};{NT8_SYMBOL};SELL;1;LIMIT;{price:.2f};0;DAY;;{order_id};"
     return _send(cmd)
 
 
