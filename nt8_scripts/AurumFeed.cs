@@ -76,13 +76,18 @@ namespace NinjaTrader.NinjaScript.Indicators
             {
                 lock (Account.All)
                 {
-                    var acct = Account.All.FirstOrDefault(a => a.Name == AccountName);
+                    // Match by Name OR DisplayName to handle both live and sim accounts
+                    var acct = Account.All.FirstOrDefault(a =>
+                        a.Name == AccountName || a.DisplayName == AccountName);
                     if (acct != null)
                     {
                         lock (acct.Positions)
                         {
+                            // Match by MasterInstrument.Name (e.g. "MGC") to avoid
+                            // expiry month format mismatches (JUN26 vs 06-26)
                             var pos = acct.Positions.FirstOrDefault(p =>
-                                p.Instrument.FullName == Instrument.FullName
+                                p.Instrument.MasterInstrument.Name
+                                    == Instrument.MasterInstrument.Name
                                 && p.MarketPosition == MarketPosition.Long);
                             if (pos != null)
                                 netPosition = pos.Quantity;
